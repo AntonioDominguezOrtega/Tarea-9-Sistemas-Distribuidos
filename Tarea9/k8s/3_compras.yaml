@@ -21,7 +21,7 @@ spec:
         - name: UserID
           value: "Antonio"
         - name: Password
-          value: "2001Tonoado."
+          value: "*********"
         - name: Database
           value: "t9_2021630040_bdgc"
         # Comunicación entre microservicios
