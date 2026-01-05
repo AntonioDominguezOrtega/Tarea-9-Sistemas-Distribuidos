@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-ga
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ga
+  template:
+    metadata:
+      labels:
+        app: ga
+    spec:
+      containers:
+      - name: ga
+        image: t92021630040acr.azurecr.io/t9_2021630040_ga:v1
+        env:
+        - name: Server
+          value: "t9-2021630040-bd.mysql.database.azure.com"
+        - name: UserID
+          value: "Antonio"
+        - name: Password
+          value: "2001Tonoado."
+        - name: Database
+          value: "t9_2021630040_bdga"
+        # Comunicación entre microservicios
+        - name: EndpointUsuarios
+          value: "http://servicio-gu/api/verifica_acceso"
+        - name: EndpointCompras
+          value: "http://servicio-gc/api/alta_articulo"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servicio-ga
+spec:
+  type: ClusterIP
+  selector:
+    app: ga
+  ports:
+  - port: 80
+    targetPort: 80

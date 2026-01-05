@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-gc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gc
+  template:
+    metadata:
+      labels:
+        app: gc
+    spec:
+      containers:
+      - name: gc
+        image: t92021630040acr.azurecr.io/t9_2021630040_gc:v1
+        env:
+        - name: Server
+          value: "t9-2021630040-bd.mysql.database.azure.com"
+        - name: UserID
+          value: "Antonio"
+        - name: Password
+          value: "2001Tonoado."
+        - name: Database
+          value: "t9_2021630040_bdgc"
+        # Comunicación entre microservicios
+        - name: EndpointUsuarios
+          value: "http://servicio-gu/api/verifica_acceso"
+        - name: EndpointArticulos
+          value: "http://servicio-ga/api/detalles_articulo"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servicio-gc
+spec:
+  type: ClusterIP
+  selector:
+    app: gc
+  ports:
+  - port: 80
+    targetPort: 80

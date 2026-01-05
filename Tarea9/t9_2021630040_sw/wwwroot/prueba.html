@@ -1,0 +1,627 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" charset="utf-8">
+    <meta name="author" content="Carlos Pineda Guerrero. 2025">
+    <script src='/api/Get?nombre=/WSClient.js'></script>
+    <style>
+        body { font-family: sans-serif; }
+        
+        /* Estilos para las tarjetas de productos */
+        .producto-card {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .producto-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .producto-info {
+            flex-grow: 1;
+        }
+        
+        /* Controles de cantidad (+ / -) */
+        .controles-cantidad {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .btn-qty {
+            width: 30px;
+            height: 30px;
+            background: #eee;
+            border: 1px solid #999;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .input-qty {
+            width: 40px;
+            text-align: center;
+        }
+        
+        /* Botones generales */
+        button { cursor: pointer; }
+    </style>
+    <script>
+        var URL = "/api";
+        var email;
+        var token;
+        var id_usuario; 
+        var foto = null; 
+
+        // ================= UTILIDADES =================
+        function get(id) { return document.getElementById(id); }
+        function muestra(id) { get(id).style.display = "block"; }
+        function oculta(id) { get(id).style.display = "none"; }
+
+        function readSingleFile(files,imagen) {
+            var file = files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                imagen.src = reader.result;
+                foto = reader.result.split(',')[1];
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function sha256(texto) {
+            var encoder = new TextEncoder();
+            var datos = encoder.encode(texto);
+            var hashBuffer = await crypto.subtle.digest('SHA-256', datos);
+            var hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function formatearFecha(fecha) {
+            var fechaObj = new Date(fecha);
+            var año = fechaObj.getFullYear();
+            var mes = (fechaObj.getMonth() + 1).toString().padStart(2,'0');
+            var dia = fechaObj.getDate().toString().padStart(2,'0');
+            var horas = fechaObj.getHours().toString().padStart(2,'0');
+            var minutos = fechaObj.getMinutes().toString().padStart(2,'0');
+            return año + "-" + mes + "-" + dia + "T" + horas + ":" + minutos;
+        }
+
+        // ================= LIMPIEZA DE CAMPOS =================
+        function limpia_login() {
+            get("login_email").value = "";
+            get("login_password").value = "";
+        }
+        
+        function limpia_alta() {
+            get("alta_email").value = "";
+            get("alta_password").value = "";
+            get("alta_nombre").value = "";
+            get("alta_apellido_paterno").value = "";
+            get("alta_apellido_materno").value = "";
+            get("alta_fecha_nacimiento").value = "";
+            get("alta_telefono").value = "";
+            get("alta_genero").value = "";
+            get("alta_imagen").src = "/api/Get?nombre=/usuario_sin_foto.png";
+            foto = null;
+        }
+
+        function limpia_captura() {
+            get("captura_nombre").value = "";
+            get("captura_descripcion").value = "";
+            get("captura_precio").value = "";
+            get("captura_cantidad").value = "";
+            get("captura_imagen").src = "/api/Get?nombre=/usuario_sin_foto.png";
+            get("captura_file").value = "";
+            foto = null;
+        }
+
+        function limpia_compra() {
+            get("buscar_termino").value = "";
+            get("resultados_busqueda").innerHTML = "";
+        }
+
+        function limpia_consulta() {
+            get("consulta_email").value = "";
+            get("consulta_password").value = "";
+            get("consulta_nombre").value = "";
+            get("consulta_apellido_paterno").value = "";
+            get("consulta_apellido_materno").value = "";
+            get("consulta_fecha_nacimiento").value = "";
+            get("consulta_telefono").value = "";
+            get("consulta_genero").value = "";
+            get("consulta_imagen").src = "/api/Get?nombre=/usuario_sin_foto.png";
+        }
+
+        function quita_foto() {
+            foto=null;
+            get("consulta_imagen").src = "/api/Get?nombre=/usuario_sin_foto.png";
+            get('consulta_file').value='';
+        }
+
+        // ================= USUARIOS (LOGIN, ALTA, PERFIL) =================
+
+        function login() {
+            var cliente = new WSClient(URL);
+            sha256(get("login_password").value).then(hash => {
+                cliente.get("login", {
+                    email: get("login_email").value,
+                    password: hash
+                }, function(code,result) {
+                    if (code == 200) {
+                        email = get("login_email").value;
+                        token = result.token;
+                        
+                        // Obtenemos ID de usuario inmediatamente para usarlo en compras
+                        cliente.get("consulta_usuario", { email: email, token: token },
+                        function(codeUsr, resultUsr) {
+                            if (codeUsr == 200) {
+                                id_usuario = resultUsr.id_usuario;
+                                oculta("login");
+                                muestra("menu");
+                            } else {
+                                alert("Error recuperando datos de usuario.");
+                            }
+                        });
+                    } else alert(JSON.stringify(result));
+                });
+            });
+        }
+
+        function alta() {
+            var cliente = new WSClient(URL);
+            sha256(get("alta_password").value).then(hash => {
+                var usuario = {
+                    email: get("alta_email").value,
+                    password: hash,
+                    nombre: get("alta_nombre").value,
+                    apellido_paterno: get("alta_apellido_paterno").value,
+                    apellido_materno: get("alta_apellido_materno").value || null,
+                    fecha_nacimiento: get("alta_fecha_nacimiento").value ? new Date(get("alta_fecha_nacimiento").value).toISOString() : null,
+                    telefono: get("alta_telefono").value || null,
+                    genero: get("alta_genero").value == "Masculino" ? "M" : get("alta_genero").value == "Femenino" ? "F" : null,
+                    foto: foto
+                };
+                cliente.post("alta_usuario", usuario, function(code,result) {
+                    if (code == 200) {
+                        alert("Se registró el usuario");
+                        limpia_login();
+                        oculta('alta_usuario');
+                        muestra('login');
+                    } else alert(JSON.stringify(result));
+                });
+            });
+        }
+
+        function consulta() {
+            var cliente = new WSClient(URL);
+            cliente.get("consulta_usuario", { email: email, token: token }, function(code,result) {
+                if (code == 200) {
+                    limpia_consulta();
+                    oculta('menu'); 
+                    muestra('consulta_usuario');
+                    get("consulta_email").value = result.email;
+                    get("consulta_nombre").value = result.nombre;
+                    get("consulta_apellido_paterno").value = result.apellido_paterno;
+                    get("consulta_apellido_materno").value = result.apellido_materno || "";
+                    get("consulta_fecha_nacimiento").value = formatearFecha(new Date(result.fecha_nacimiento));
+                    get("consulta_telefono").value = result.telefono || "";
+                    get("consulta_genero").value = result.genero == "M" ? "Masculino" : result.genero == "F" ? "Femenino" : "";
+                    foto = result.foto;
+                    get("consulta_imagen").src = foto ? "data:image/jpeg;base64," + foto : "/api/Get?nombre=/usuario_sin_foto.png";
+                } else alert(JSON.stringify(result));
+            });
+        }
+
+        function modifica() {
+             if (get("consulta_password").value != "")
+                sha256(get("consulta_password").value).then(hash => { modifica_usuario(hash); });
+            else
+                modifica_usuario("");
+        }
+
+        function modifica_usuario(password) {
+            var cliente = new WSClient(URL);
+            var usuario = {
+                password: password,
+                nombre: get("consulta_nombre").value,
+                apellido_paterno: get("consulta_apellido_paterno").value,
+                apellido_materno: get("consulta_apellido_materno").value || null,
+                fecha_nacimiento: get("consulta_fecha_nacimiento").value ? new Date(get("consulta_fecha_nacimiento").value).toISOString() : null,
+                telefono: get("consulta_telefono").value || null,
+                genero: get("consulta_genero").value == "Masculino" ? "M" : get("consulta_genero").value == "Femenino" ? "F" : null,
+                foto: foto
+            };
+            cliente.put("modifica_usuario", { email: email, token: token }, usuario,
+            function(code,result) {
+                if (code == 200) alert("Se modificó el perfil");
+                else alert(JSON.stringify(result));
+            });
+        }
+
+        function borra() {
+            var client = new WSClient(URL);
+            client.delete("borra_usuario", { email: email, token: token },
+            function(code,result) {
+                if (code == 200) {
+                    alert("Usuario eliminado");
+                    limpia_login();
+                    oculta('menu');
+                    muestra('login');
+                } else alert(JSON.stringify(result));
+            });
+        }
+
+        // ================= ARTÍCULOS (ALTA, BUSQUEDA, COMPRA) =================
+
+        function guardar_articulo() {
+            var cliente = new WSClient(URL);
+            var articulo = {
+                nombre: get("captura_nombre").value,
+                descripcion: get("captura_descripcion").value,
+                precio: parseFloat(get("captura_precio").value),
+                cantidad: parseInt(get("captura_cantidad").value),
+                foto: foto,
+                id_usuario: id_usuario,
+                token: token
+            };
+
+            if (!articulo.foto) { alert("Falta foto"); return; }
+
+            cliente.post("alta_articulo", articulo, function(code, result) {
+                if (code == 200) {
+                    alert("Artículo guardado");
+                    limpia_captura();
+                } else alert(JSON.stringify(result));
+            });
+        }
+
+        function buscar() {
+            var termino = get("buscar_termino").value;
+            // Se permite búsqueda vacía para traer todo el catálogo
+            var cliente = new WSClient(URL);
+            cliente.post("consulta_articulos", {
+                search: termino,
+                id_usuario: id_usuario,
+                token: token
+            }, function(code, result) {
+                if (code == 200) {
+                    renderizarResultados(result);
+                } else {
+                    alert("Error al buscar: " + JSON.stringify(result));
+                }
+            });
+        }
+
+        function renderizarResultados(listaArticulos) {
+            var contenedor = get("resultados_busqueda");
+            contenedor.innerHTML = "";
+
+            if (listaArticulos.length === 0) {
+                contenedor.innerHTML = "<p>No se encontraron artículos :(</p>";
+                return;
+            }
+
+            listaArticulos.forEach(art => {
+                var div = document.createElement("div");
+                div.className = "producto-card";
+                
+                var img = document.createElement("img");
+                img.className = "producto-img";
+                img.src = "data:image/jpeg;base64," + art.foto;
+                div.appendChild(img);
+
+                var info = document.createElement("div");
+                info.className = "producto-info";
+                info.innerHTML = `<strong>${art.nombre}</strong><br>
+                                  <small>${art.descripcion}</small><br>
+                                  <span style="color:blue">$${art.precio}</span>`;
+                
+                var controles = document.createElement("div");
+                controles.className = "controles-cantidad";
+                
+                var inputQty = document.createElement("input");
+                inputQty.className = "input-qty";
+                inputQty.value = 1;
+                inputQty.type = "number";
+                inputQty.id = "qty_" + art.id_articulo;
+
+                var btnMenos = document.createElement("button");
+                btnMenos.innerText = "-";
+                btnMenos.className = "btn-qty";
+                btnMenos.onclick = function() { if(inputQty.value > 1) inputQty.value--; };
+
+                var btnMas = document.createElement("button");
+                btnMas.innerText = "+";
+                btnMas.className = "btn-qty";
+                btnMas.onclick = function() { inputQty.value++; };
+
+                controles.appendChild(btnMenos);
+                controles.appendChild(inputQty);
+                controles.appendChild(btnMas);
+                info.appendChild(controles);
+                
+                div.appendChild(info);
+
+                var btnComprar = document.createElement("button");
+                btnComprar.innerText = "Comprar";
+                btnComprar.style.backgroundColor = "#28a745";
+                btnComprar.style.color = "white";
+                btnComprar.onclick = function() { comprar(art.id_articulo); };
+                div.appendChild(btnComprar);
+
+                contenedor.appendChild(div);
+            });
+        }
+
+        function comprar(id_articulo) {
+            var cantidadInput = get("qty_" + id_articulo);
+            var cantidad = parseInt(cantidadInput.value);
+
+            if (cantidad < 1) { alert("Cantidad debe ser 1 o más"); return; }
+            if (!confirm("¿Agregar al carrito?")) return;
+
+            var cliente = new WSClient(URL);
+            cliente.post("compra_articulo", {
+                id_articulo: id_articulo,
+                cantidad: cantidad,
+                id_usuario: id_usuario,
+                token: token
+            }, function(code, result) {
+                if (code == 200) {
+                    alert("¡Agregado al carrito!");
+                    buscar(); // Refresca la vista para ver el stock actualizado
+                } else {
+                    alert("Error: " + (result.mensaje || JSON.stringify(result)));
+                }
+            });
+        }
+
+        // ================= CARRITO DE COMPRA =================
+
+        function ver_carrito() {
+            var cliente = new WSClient(URL);
+            cliente.post("consulta_carrito", {
+                id_usuario: id_usuario,
+                token: token
+            }, function(code, result) {
+                if (code == 200) {
+                    oculta('compra_articulos'); 
+                    oculta('menu'); 
+                    muestra('pantalla_carrito');
+                    renderizarCarrito(result);
+                } else {
+                    alert("Error al ver carrito: " + JSON.stringify(result));
+                }
+            });
+        }
+
+        function renderizarCarrito(lista) {
+            var contenedor = get("lista_carrito");
+            contenedor.innerHTML = "";
+            var totalCompra = 0;
+
+            if (lista.length === 0) {
+                contenedor.innerHTML = "<p>El carrito está vacío.</p>";
+                get("total_carrito").innerText = "$0.00";
+                return;
+            }
+
+            lista.forEach(item => {
+                totalCompra += item.costo;
+
+                var div = document.createElement("div");
+                div.className = "producto-card";
+
+                var img = document.createElement("img");
+                img.className = "producto-img";
+                img.src = item.foto ? "data:image/jpeg;base64," + item.foto : "/api/Get?nombre=/usuario_sin_foto.png";
+                div.appendChild(img);
+
+                var info = document.createElement("div");
+                info.className = "producto-info";
+                info.innerHTML = `<strong>${item.nombre}</strong><br>
+                                  Precio Unit: $${item.precio}<br>
+                                  <strong>Subtotal: $${item.costo.toFixed(2)}</strong>`;
+                
+                // Controles de cantidad EN EL CARRITO (+ / -)
+                var controles = document.createElement("div");
+                controles.className = "controles-cantidad";
+                
+                var btnMenos = document.createElement("button");
+                btnMenos.innerText = "-";
+                btnMenos.className = "btn-qty";
+                btnMenos.onclick = function() { 
+                    if(item.cantidad > 1) modificar_cantidad(item.id_articulo, -1);
+                    else if(confirm("¿Eliminar artículo del carrito?")) eliminar_item_carrito(item.id_articulo);
+                };
+
+                var lblCant = document.createElement("span");
+                lblCant.style.margin = "0 10px";
+                lblCant.style.fontWeight = "bold";
+                lblCant.innerText = item.cantidad;
+
+                var btnMas = document.createElement("button");
+                btnMas.innerText = "+";
+                btnMas.className = "btn-qty";
+                btnMas.onclick = function() { modificar_cantidad(item.id_articulo, 1); };
+
+                controles.appendChild(btnMenos);
+                controles.appendChild(lblCant);
+                controles.appendChild(btnMas);
+                info.appendChild(controles);
+
+                div.appendChild(info);
+
+                var btnEliminar = document.createElement("button");
+                btnEliminar.innerText = "🗑️";
+                btnEliminar.style.backgroundColor = "#dc3545"; 
+                btnEliminar.style.color = "white";
+                btnEliminar.style.marginLeft = "10px";
+                btnEliminar.onclick = function() { eliminar_item_carrito(item.id_articulo); };
+                div.appendChild(btnEliminar);
+
+                contenedor.appendChild(div);
+            });
+
+            get("total_carrito").innerText = "$" + totalCompra.toFixed(2);
+        }
+
+        function modificar_cantidad(id_articulo, incremento) {
+            var cliente = new WSClient(URL);
+            cliente.post("modifica_carrito_compra", {
+                id_usuario: id_usuario,
+                token: token,
+                id_articulo: id_articulo,
+                incremento: incremento
+            }, function(code, result) {
+                if (code == 200) {
+                    ver_carrito(); // Recargar para ver totales actualizados
+                } else {
+                    alert("Error: " + (result.mensaje || JSON.stringify(result)));
+                }
+            });
+        }
+
+        function vaciar_carrito() {
+            if(!confirm("¿Estás seguro de vaciar TODO el carrito?")) return;
+
+            var cliente = new WSClient(URL);
+            cliente.post("elimina_carrito_compra", {
+                id_usuario: id_usuario,
+                token: token
+            }, function(code, result) {
+                if (code == 200) {
+                    alert("Carrito vaciado.");
+                    ver_carrito();
+                } else {
+                    alert("Error: " + JSON.stringify(result));
+                }
+            });
+        }
+
+        function eliminar_item_carrito(id_articulo) {
+            if (!confirm("¿Eliminar este artículo?")) return;
+            var cliente = new WSClient(URL);
+            cliente.post("elimina_articulo_carrito_compra", {
+                id_usuario: id_usuario,
+                token: token,
+                id_articulo: id_articulo
+            }, function(code, result) {
+                if (code == 200) {
+                    ver_carrito(); 
+                } else {
+                    alert("Error: " + JSON.stringify(result));
+                }
+            });
+        }
+
+    </script>
+</head>
+<body>
+<div style="width:300px;margin:auto">
+
+    <div id="login">
+        <h2 style="text-align:center">Acceso</h2>
+        Email<br><input type="email" id="login_email" style="width:100%"/><br><br>
+        Password<br><input type="password" id="login_password" style="width:100%"/><br><br>
+        <button onclick="login()" style="width:100%;height:40px">Entrar</button><br><br>
+        <button onclick="oculta('login');muestra('alta_usuario')" style="width:100%;height:40px">Registrarse</button>
+    </div>
+
+    <div id="alta_usuario" style="display:none">
+        <h2>Registro</h2>
+        Email *<br><input type="email" id="alta_email" style="width:100%"><br>
+        Contraseña *<br><input type="password" id="alta_password" style="width:100%"><br>
+        Nombre *<br><input type="text" id="alta_nombre" style="width:100%"><br>
+        Apellido Paterno *<br><input type="text" id="alta_apellido_paterno" style="width:100%"><br>
+        Apellido Materno<br><input type="text" id="alta_apellido_materno" style="width:100%"><br>
+        Fecha Nacimiento *<br><input type="datetime-local" id="alta_fecha_nacimiento" style="width:100%"><br>
+        Teléfono<br><input type="number" id="alta_telefono" style="width:100%"><br>
+        Género<br>
+        <select id="alta_genero" style="width:100%">
+            <option></option><option>Masculino</option><option>Femenino</option>
+        </select><br><br>
+        <img id="alta_imagen" width="60" src="/api/Get?nombre=/usuario_sin_foto.png"><br>
+        <input type="file" onchange="readSingleFile(files,get('alta_imagen'))"><br><br>
+        
+        <button onclick="alta()" style="width:100%;height:40px">Registrar</button><br><br>
+        <button onclick="oculta('alta_usuario');muestra('login')" style="width:100%;height:40px">Cancelar</button>
+    </div>
+
+    <div id="menu" style="display:none">
+        <h3 style="text-align:center">Menú Principal</h3>
+        <button onclick="limpia_captura();oculta('menu');muestra('captura_articulo')" style="width:100%;margin-bottom:10px;height:40px">Captura de artículo</button>
+        <button onclick="limpia_compra();oculta('menu');muestra('compra_articulos');buscar()" style="width:100%;margin-bottom:10px;height:40px">Compra de artículos</button>
+        <button onclick="consulta()" style="width:100%;margin-bottom:10px;height:40px">Perfil</button>
+        <button onclick="oculta('menu');muestra('login')" style="width:100%;height:40px">Salir</button>
+    </div>
+
+    <div id="captura_articulo" style="display:none">
+        <h2>Alta Artículo</h2>
+        Nombre *<br><input type="text" id="captura_nombre" style="width:100%"><br>
+        Descripción *<br><textarea id="captura_descripcion" style="width:100%"></textarea><br>
+        Precio *<br><input type="number" id="captura_precio" style="width:100%" step="0.01"><br>
+        Cantidad *<br><input type="number" id="captura_cantidad" style="width:100%"><br>
+        Foto *<br>
+        <img id="captura_imagen" width="60" src="/api/Get?nombre=/usuario_sin_foto.png"><br>
+        <input type="file" id="captura_file" onchange="readSingleFile(files,get('captura_imagen'))"><br><br>
+        <button onclick="guardar_articulo()" style="width:100%;height:40px">Guardar</button><br><br>
+        <button onclick="oculta('captura_articulo');muestra('menu')" style="width:100%;height:40px">Regresar</button>
+    </div>
+
+    <div id="compra_articulos" style="display:none">
+        <h2>Buscar Productos</h2>
+        <button onclick="ver_carrito()" style="width:100%; background-color:#ffc107; margin-bottom:10px; height:40px">🛒 Ver Carrito</button>
+        
+        <div style="display:flex; gap:5px; margin-bottom:15px">
+            <input type="text" id="buscar_termino" placeholder="Buscar..." style="flex-grow:1">
+            <button onclick="buscar()">🔍</button>
+        </div>
+        
+        <div id="resultados_busqueda"></div>
+
+        <br>
+        <button onclick="oculta('compra_articulos');muestra('menu')" style="width:100%;height:40px">Regresar al Menú</button>
+    </div>
+
+    <div id="pantalla_carrito" style="display:none">
+        <h2>Tu Carrito</h2>
+        <div id="lista_carrito"></div>
+        <hr>
+        <h3 style="text-align:right">Total: <span id="total_carrito">$0.00</span></h3>
+        
+        <button onclick="vaciar_carrito()" style="width:100%;margin-bottom:10px;height:40px;background-color:#dc3545;color:white">Vaciar Carrito</button>
+        
+        <button onclick="oculta('pantalla_carrito');muestra('compra_articulos')" style="width:100%;margin-bottom:10px;height:40px">Seguir Comprando</button>
+        <button onclick="oculta('pantalla_carrito');muestra('menu')" style="width:100%;height:40px">Regresar al Menú</button>
+    </div>
+
+    <div id="consulta_usuario" style="display:none">
+        <h2>Perfil</h2>
+        Email<br><input type="email" id="consulta_email" readonly style="width:100%"><br>
+        Contraseña (para cambiar)<br><input type="password" id="consulta_password" style="width:100%"><br>
+        Nombre<br><input type="text" id="consulta_nombre" style="width:100%"><br>
+        Apellido P.<br><input type="text" id="consulta_apellido_paterno" style="width:100%"><br>
+        Apellido M.<br><input type="text" id="consulta_apellido_materno" style="width:100%"><br>
+        Fecha Nac.<br><input type="datetime-local" id="consulta_fecha_nacimiento" style="width:100%"><br>
+        Teléfono<br><input type="number" id="consulta_telefono" style="width:100%"><br>
+        Género<br><select id="consulta_genero" style="width:100%"><option></option><option>Masculino</option><option>Femenino</option></select><br>
+        <img id="consulta_imagen" width="60" src="/api/Get?nombre=/usuario_sin_foto.png"><br>
+        <input type="file" id="consulta_file" onchange="readSingleFile(files,get('consulta_imagen'))"><br>
+        <button onclick="quita_foto()">Quitar foto</button><br><br>
+
+        <button onclick="modifica()" style="width:100%;height:40px;margin-bottom:10px">Guardar cambios</button>
+        <button onclick="if (confirm('¿Eliminar perfil?')){borra();}" style="width:100%;height:40px;margin-bottom:10px;background-color:#dc3545;color:white">Eliminar perfil</button>
+        <button onclick="oculta('consulta_usuario');muestra('menu')" style="width:100%;height:40px">Regresar</button>
+    </div>
+
+</div>
+</body>
+</html>

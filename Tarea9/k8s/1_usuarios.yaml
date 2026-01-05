@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-gu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gu
+  template:
+    metadata:
+      labels:
+        app: gu
+    spec:
+      containers:
+      - name: gu
+        image: t92021630040acr.azurecr.io/t9_2021630040_gu:v1
+        env:
+        - name: Server
+          value: "t9-2021630040-bd.mysql.database.azure.com"
+        - name: UserID
+          value: "Antonio"
+        - name: Password
+          value: "2001Tonoado."
+        - name: Database
+          value: "t9_2021630040_bdgu"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servicio-gu
+spec:
+  type: ClusterIP
+  selector:
+    app: gu
+  ports:
+  - port: 80
+    targetPort: 80

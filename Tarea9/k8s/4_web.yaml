@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-sw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sw
+  template:
+    metadata:
+      labels:
+        app: sw
+    spec:
+      containers:
+      - name: sw
+        image: t92021630040acr.azurecr.io/t9_2021630040_sw:v1
+        env:
+        - name: ROOT
+          value: "/home/site/wwwroot/wwwroot" 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servicio-sw
+spec:
+  type: ClusterIP
+  selector:
+    app: sw
+  ports:
+  - port: 80
+    targetPort: 80
